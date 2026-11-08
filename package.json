@@ -1,0 +1,20 @@
+{
+  "name": "gimnasio-prototipo",
+  "version": "1.0.0",
+  "description": "Prototipo funcional: sistema web para la gestión de membresías, control de acceso y seguimiento de rutinas en un gimnasio",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning src/server.js",
+    "seed": "node --disable-warning=ExperimentalWarning src/seed.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/aceptacion.test.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
