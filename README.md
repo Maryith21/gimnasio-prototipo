@@ -28,7 +28,7 @@ No necesitas instalar ni configurar una base de datos: usa el SQLite que ya trae
 ## Instalación y ejecución
 
 ```bash
-git clone <URL-DEL-REPOSITORIO>
+git clone https://github.com/Maryith21/gimnasio-prototipo.git
 cd gimnasio-prototipo
 npm install
 npm start
@@ -57,8 +57,8 @@ Para reiniciar los datos de demostración, detén el servidor y borra la carpeta
 npm test
 ```
 
-Ejecuta 10 pruebas de aceptación automatizadas (una por cada criterio de aceptación de la Actividad 2, más pruebas de
-seguridad y validaciones) contra una base de datos en memoria.
+Ejecuta 13 pruebas de aceptación automatizadas (una por cada criterio de aceptación de la Actividad 2, más pruebas de
+seguridad, validaciones y las mejoras del refinamiento) contra una base de datos en memoria.
 
 ## Estructura
 

@@ -17,6 +17,8 @@ function createApp(db) {
 
   // ---------- helpers ----------
   const err = (res, codigo, mensaje) => res.status(codigo).json({ error: mensaje });
+  // Deja solo letras y números: "1.000.000.003" y "1000000003" son el mismo documento.
+  const normDoc = (v) => String(v || '').replace(/[^0-9A-Za-z]/g, '');
   const num = (v) => (v === undefined || v === null || v === '' ? null : Number(v));
 
   function auth(req, res, next) {
@@ -70,14 +72,14 @@ function createApp(db) {
 
   app.post('/api/usuarios', auth, rol('administrador'), (req, res) => {
     const { nombre, documento, email, password, rol: r, objetivo } = req.body || {};
-    if (!nombre || !documento || !email || !password || !r) return err(res, 400, 'Nombre, documento, correo, contraseña y rol son obligatorios.');
+    if (!nombre || !normDoc(documento) || !email || !password || !r) return err(res, 400, 'Nombre, documento, correo, contraseña y rol son obligatorios.');
     if (!ROLES.includes(r)) return err(res, 400, 'Rol no válido.');
     if (!/^\S+@\S+\.\S+$/.test(email)) return err(res, 400, 'Correo no válido.');
     if (String(password).length < 6) return err(res, 400, 'La contraseña debe tener al menos 6 caracteres.');
     if (objetivo && !OBJETIVOS.includes(objetivo)) return err(res, 400, 'Objetivo no válido.');
     try {
       const info = db.prepare('INSERT INTO usuarios (nombre, documento, email, password_hash, rol, objetivo) VALUES (?,?,?,?,?,?)')
-        .run(String(nombre).trim(), String(documento).trim(), String(email).toLowerCase().trim(), bcrypt.hashSync(String(password), 10), r, objetivo || null);
+        .run(String(nombre).trim(), normDoc(documento), String(email).toLowerCase().trim(), bcrypt.hashSync(String(password), 10), r, objetivo || null);
       res.status(201).json({ id: info.lastInsertRowid });
     } catch (e) {
       if (String(e.message).includes('UNIQUE')) return err(res, 409, 'Ya existe un usuario con ese documento o correo.');
@@ -157,7 +159,7 @@ function createApp(db) {
 
   // ---------- control de acceso ----------
   app.post('/api/accesos', auth, rol('administrador'), (req, res) => {
-    const documento = String((req.body || {}).documento || '').trim();
+    const documento = normDoc((req.body || {}).documento);
     if (!documento) return err(res, 400, 'Ingresa el documento del usuario.');
     const u = db.prepare('SELECT id, nombre, rol FROM usuarios WHERE documento=?').get(documento);
     let permitido = 0, motivo, vencimiento = null;
@@ -230,7 +232,7 @@ function createApp(db) {
     res.status(201).json({ id: crear() });
   });
 
-  // Modifica una rutina conservando al resto del historial del usuario.
+  // Ajustar una rutina guarda una NUEVA versión y conserva la anterior en el historial del cliente.
   app.put('/api/rutinas/:id', auth, rol('entrenador', 'administrador'), (req, res) => {
     const { nombre, observaciones, ejercicios } = req.body || {};
     const r = db.prepare('SELECT * FROM rutinas WHERE id=?').get(req.params.id);
@@ -238,13 +240,14 @@ function createApp(db) {
     if (!nombre) return err(res, 400, 'El nombre de la rutina es obligatorio.');
     const msg = validarEjercicios(ejercicios);
     if (msg) return err(res, 400, msg);
-    db.transaction(() => {
-      db.prepare('UPDATE rutinas SET nombre=?, observaciones=? WHERE id=?').run(String(nombre).trim(), observaciones || '', r.id);
-      db.prepare('DELETE FROM rutina_ejercicios WHERE rutina_id=?').run(r.id);
+    const nueva = db.transaction(() => {
+      const n = db.prepare('INSERT INTO rutinas (cliente_id, entrenador_id, nombre, observaciones, creada, reemplaza_a) VALUES (?,?,?,?,?,?)')
+        .run(r.cliente_id, req.user.id, String(nombre).trim(), observaciones || '', hoy(), r.id);
       const ins = db.prepare('INSERT INTO rutina_ejercicios (rutina_id, ejercicio, series, repeticiones, observaciones) VALUES (?,?,?,?,?)');
-      for (const e of ejercicios) ins.run(r.id, String(e.ejercicio).trim(), Number(e.series), String(e.repeticiones).trim(), e.observaciones || '');
+      for (const e of ejercicios) ins.run(n.lastInsertRowid, String(e.ejercicio).trim(), Number(e.series), String(e.repeticiones).trim(), e.observaciones || '');
+      return n.lastInsertRowid;
     })();
-    res.json({ ok: true });
+    res.json({ ok: true, id: nueva });
   });
 
   // ---------- avances ----------
@@ -254,6 +257,7 @@ function createApp(db) {
     if (req.user.rol !== 'cliente' && b.usuario_id) usuarioId = Number(b.usuario_id);
     const fecha = b.fecha || hoy();
     if (!fechaValida(fecha)) return err(res, 400, 'Fecha no válida.');
+    if (fecha > hoy()) return err(res, 400, 'La fecha del avance no puede ser futura.');
     const peso = num(b.peso), cintura = num(b.cintura), pecho = num(b.pecho), carga = num(b.carga_kg);
     for (const [k, v] of Object.entries({ peso, cintura, pecho, carga })) {
       if (v !== null && (isNaN(v) || v <= 0)) return err(res, 400, `El valor de ${k} debe ser un número mayor a cero.`);

@@ -136,3 +136,29 @@ test('Usuarios: validaciones y documento/correo duplicado', async () => {
   assert.strictEqual((await api('POST', '/api/usuarios', { ...nuevo, documento: '2001', email: 'a@x.co', rol: 'dios' }, tokens.admin)).status, 400);
   assert.strictEqual((await api('POST', '/api/usuarios', { ...nuevo, documento: '2002', email: 'b@x.co', password: '123' }, tokens.admin)).status, 400);
 });
+
+// ---------- Pruebas agregadas en el refinamiento (hallazgos H5 a H7) ----------
+test('H5: ajustar una rutina crea una nueva versión y conserva la anterior', async () => {
+  const cuerpo = { cliente_id: 5, nombre: 'Base', ejercicios: [{ ejercicio: 'Trote', series: 1, repeticiones: '20 min' }] };
+  const v1 = await api('POST', '/api/rutinas', cuerpo, tokens.entrenador);
+  const v2 = await api('PUT', `/api/rutinas/${v1.data.id}`, { ...cuerpo, nombre: 'Base ajustada' }, tokens.entrenador);
+  assert.strictEqual(v2.status, 200);
+  assert.notStrictEqual(v2.data.id, v1.data.id);
+  const { data } = await api('GET', '/api/rutinas?cliente_id=5', null, tokens.entrenador);
+  const anterior = data.find((r) => r.id === v1.data.id);
+  const nueva = data.find((r) => r.id === v2.data.id);
+  assert.ok(anterior && anterior.nombre === 'Base' && anterior.ejercicios.length === 1);
+  assert.strictEqual(nueva.reemplaza_a, v1.data.id);
+});
+
+test('H6: no acepta avances con fecha futura', async () => {
+  const r = await api('POST', '/api/avances', { fecha: '2099-01-01', peso: 70 }, tokens.laura);
+  assert.strictEqual(r.status, 400);
+});
+
+test('H7: el documento se reconoce aunque se digite con puntos o espacios', async () => {
+  const r = await api('POST', '/api/accesos', { documento: '1.000.000.003' }, tokens.admin);
+  assert.strictEqual(r.data.nombre, 'Laura Martínez');
+  const r2 = await api('POST', '/api/accesos', { documento: ' 1000 000 004 ' }, tokens.admin);
+  assert.strictEqual(r2.data.nombre, 'Andrés Pérez');
+});

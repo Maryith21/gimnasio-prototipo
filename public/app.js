@@ -129,7 +129,7 @@ async function acceso() {
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     $('#res').innerHTML = `<div class="resultado ${d.permitido ? 'ok' : 'mal'}"><b>${d.permitido ? 'Ingreso permitido' : 'Ingreso denegado'}</b>
-      ${esc(d.nombre || 'Usuario desconocido')}<br>${esc(d.motivo)}${d.vencimiento ? ' Vence: ' + esc(d.vencimiento) : ''}</div>`;
+      ${esc(d.nombre || 'Usuario desconocido')}<br>${esc(d.motivo)}${d.vencimiento ? (d.permitido ? ' Vence el ' : ' Venció el ') + esc(d.vencimiento) : ''}</div>`;
     const h = await api('GET', '/accesos'); // refresca historial sin borrar el resultado
     $('table', contenido.querySelectorAll('.tarjeta')[1]).outerHTML = `<table><tr><th>Hora</th><th>Usuario</th><th>Resultado</th></tr>${h.map((a) => `<tr><td>${esc(a.fecha_hora.slice(5, 16))}</td><td>${esc(a.nombre || a.documento)}</td><td>${a.permitido ? '<span class="chip ok">Permitido</span>' : '<span class="chip mal">Denegado</span>'} <small>${esc(a.motivo)}</small></td></tr>`).join('')}</table>`;
     $('#doc').select();
@@ -199,6 +199,8 @@ function filaEjercicio(e = {}) {
     <input class="x-ob" placeholder="Observaciones" value="${esc(e.observaciones)}" aria-label="Observaciones">
     <button type="button" class="sec x-del" aria-label="Quitar ejercicio">✕</button></div>`;
 }
+// Una rutina es "versión anterior" si otra la reemplazó al ajustarla.
+const reemplazada = (lista, r) => lista.some((x) => x.reemplaza_a === r.id);
 const tablaRutina = (r) => `<table><tr><th>Ejercicio</th><th>Series</th><th>Reps</th><th>Notas</th></tr>
   ${r.ejercicios.map((e) => `<tr><td>${esc(e.ejercicio)}</td><td>${e.series}</td><td>${esc(e.repeticiones)}</td><td>${esc(e.observaciones)}</td></tr>`).join('')}</table>`;
 
@@ -228,9 +230,9 @@ async function detalleCliente(lista) {
             ${cli.objetivo ? `<button type="button" class="sec" id="sug">Usar sugerida (${OBJ[cli.objetivo]})</button>` : ''}
             <button>Guardar rutina</button><button type="button" class="sec" id="canc" hidden>Cancelar edición</button></div></form></div>
       <div class="tarjeta ancha"><h2>Rutinas asignadas</h2>
-        ${rutinas.map((r) => `<div style="margin-bottom:1rem"><b>${esc(r.nombre)}</b> <small>· ${esc(r.creada)} · ${esc(r.entrenador)}</small>
+        ${rutinas.map((r) => `<div style="margin-bottom:1rem"><b>${esc(r.nombre)}</b> <small>· ${esc(r.creada)} · ${esc(r.entrenador)}${reemplazada(rutinas, r) ? ' · <span class="chip vencida">versión anterior</span>' : ''}</small>
           ${r.observaciones ? `<br><small>${esc(r.observaciones)}</small>` : ''}<div class="tabla-scroll">${tablaRutina(r)}</div>
-          <div class="acciones" style="margin-top:.4rem"><button class="sec" data-ed="${r.id}">Editar</button></div></div>`).join('') || '<p class="vacio">Sin rutinas asignadas.</p>'}
+          ${reemplazada(rutinas, r) ? '' : `<div class="acciones" style="margin-top:.4rem"><button class="sec" data-ed="${r.id}">Ajustar</button></div>`}</div>`).join('') || '<p class="vacio">Sin rutinas asignadas.</p>'}
         <h2 style="margin-top:1rem">Progreso del cliente</h2>${tablaAvances(avances)}</div>
     </div>`;
   const ejs = $('#ejs');
@@ -245,7 +247,7 @@ async function detalleCliente(lista) {
   contenido.querySelectorAll('[data-ed]').forEach((b) => (b.onclick = () => {
     const r = rutinas.find((x) => x.id === +b.dataset.ed);
     $('#rid').value = r.id; $('#rn').value = r.nombre; $('#ro').value = r.observaciones || ''; poner(r.ejercicios);
-    $('#tit').textContent = 'Editar rutina'; $('#canc').hidden = false; $('#fr').scrollIntoView({ behavior: 'smooth' });
+    $('#tit').textContent = 'Ajustar rutina (se guarda como nueva versión)'; $('#canc').hidden = false; $('#fr').scrollIntoView({ behavior: 'smooth' });
   }));
   $('#canc').onclick = () => detalleCliente(lista);
   $('#fr').onsubmit = intentar(async (e) => {
@@ -255,7 +257,7 @@ async function detalleCliente(lista) {
     }));
     const cuerpo = { cliente_id: id, nombre: $('#rn').value, observaciones: $('#ro').value, ejercicios };
     if ($('#rid').value) await api('PUT', '/rutinas/' + $('#rid').value, cuerpo); else await api('POST', '/rutinas', cuerpo);
-    avisar('Rutina guardada'); detalleCliente(lista);
+    avisar($('#rid').value ? 'Nueva versión guardada; la anterior queda en el historial.' : 'Rutina guardada'); detalleCliente(lista);
   });
 }
 
@@ -289,7 +291,7 @@ async function rutina() {
   const sug = obj ? await api('GET', '/recomendacion/' + obj) : null;
   contenido.innerHTML = `
     <h1>Mi rutina</h1><p class="sub">Rutinas asignadas por tu entrenador.</p>
-    ${rutinas.map((r) => `<div class="tarjeta"><h2>${esc(r.nombre)}</h2><p class="leyenda">Asignada el ${esc(r.creada)} por ${esc(r.entrenador)}</p>
+    ${rutinas.filter((r) => !reemplazada(rutinas, r)).map((r) => `<div class="tarjeta"><h2>${esc(r.nombre)}</h2><p class="leyenda">Asignada el ${esc(r.creada)} por ${esc(r.entrenador)}</p>
       ${r.observaciones ? `<p>${esc(r.observaciones)}</p>` : ''}<div class="tabla-scroll">${tablaRutina(r)}</div></div>`).join('')
       || '<div class="tarjeta"><p class="vacio">Tu entrenador aún no te ha asignado una rutina.</p></div>'}
     ${sug ? `<div class="tarjeta"><h2>Rutina inicial sugerida · ${OBJ[obj]}</h2><p class="leyenda">${esc(sug.observaciones)} Es una guía general; tu entrenador puede ajustarla.</p>
@@ -331,7 +333,7 @@ async function progreso() {
         <div class="acciones"><button>Guardar avance</button></div></form></div>
       <div class="tarjeta"><h2>Evolución del peso</h2>${grafica(av)}<h2 style="margin-top:1rem">Historial</h2>${tablaAvances(av)}</div>
     </div>`;
-  $('#fe').value = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
+  $('#fe').value = $('#fe').max = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Bogota' });
   $('#f').onsubmit = intentar(async (e) => {
     e.preventDefault();
     await api('POST', '/avances', { fecha: $('#fe').value, peso: $('#pe').value, cintura: $('#ci').value, pecho: $('#pc').value, ejercicio: $('#ej').value, carga_kg: $('#ca').value });

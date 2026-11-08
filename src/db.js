@@ -62,7 +62,8 @@ function abrirDb(ruta) {
       entrenador_id INTEGER NOT NULL REFERENCES usuarios(id),
       nombre TEXT NOT NULL,
       observaciones TEXT,
-      creada TEXT NOT NULL
+      creada TEXT NOT NULL,
+      reemplaza_a INTEGER REFERENCES rutinas(id)
     );
     CREATE TABLE IF NOT EXISTS rutina_ejercicios (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +84,9 @@ function abrirDb(ruta) {
       carga_kg REAL
     );
   `);
+  // Bases creadas con la versión anterior: agrega la columna si no existe.
+  const cols = db.prepare('PRAGMA table_info(rutinas)').all().map((c) => c.name);
+  if (!cols.includes('reemplaza_a')) db.exec('ALTER TABLE rutinas ADD COLUMN reemplaza_a INTEGER REFERENCES rutinas(id)');
   return db;
 }
 
